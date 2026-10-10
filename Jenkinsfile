@@ -22,25 +22,22 @@ pipeline {
     }
 
     stages {
-         {
-            steps {
-                script {
-                    def packageJson = readJSON file: 'package.json'
-                    env.APP_VERSION = packageJson.version
-
-                    echo "Package version: ${env.APP_VERSION}"
+        steps {
+            script {
+                def packageJson = readJSON file: 'package.json'
+                env.APP_VERSION = packageJson.version
+                echo "Package version: ${env.APP_VERSION}"
                 }
             }
         }
 
-    }   
     stages {
-            stage('Deploy') {
-                steps {}
-                    script {
-                        withAWS(
-                            credentials: 'aws-creds',
-                            region: "${REGION}"
+        stage('Deploy') {
+            steps {}
+                script {
+                    withAWS(
+                        credentials: 'aws-creds',
+                        region: "${REGION}"
                         ) {
                             sh """
                                 aws eks update-kubeconfig --region $REGION --name "$PROJECT-${params.deploy_to}"
