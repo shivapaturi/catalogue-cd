@@ -67,7 +67,7 @@ pipeline {
                     ) {
                         def deploymentStatus = sh(
                             returnStdout: true,
-                            script: 'kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED'
+                            script: 'kubectl rollout status deployment/catalogue --request-timeout=30s -n ${PROJECT} || echo FAILED'
                         ).trim()
 
                         if (deploymentStatus.contains('successfully rolled out')) {
