@@ -51,9 +51,30 @@ pipeline {
                             kubectl get nodes
                             kubectl apply -f 01-namespace.yaml
                             sed -i "s/IMAGE_VERSION/${params.appVersion}/g" values-${params.deploy_to}.yaml
-                            #helm upgrade --install $COMPONENT -f values-${params.deploy_to}.yaml -n $PROJECT .
-                            kubectl apply -f application.yaml
+                            helm upgrade --install $COMPONENT -f values-${params.deploy_to}.yaml -n $PROJECT .
                         """
+                    }
+                }
+            }
+        }
+        stage('check status') {
+            steps {
+                script {
+                    def deploymenyStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED").trim()
+                    if (deploymentStatus.contains(successfully rolled out)) {
+                        echo "Deployment is success"
+                    } else {
+                        sh """
+                            helm rollback $COMPONENT -n $PROJECT
+                            sleep 20
+                        """
+                        def rollbackStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED").trim()
+                        if (rollbackStatus.contains(successfully rolled out)) {
+                            error("Deploymentis failed, Rollout Success!")
+                        }
+                        else {
+                            error("Deploymentis failure, Rollout failure, Application is not running!")
+                        }
                     }
                 }
             }
