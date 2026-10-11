@@ -57,28 +57,40 @@ pipeline {
                 }
             }
         }
-        stage('check status') {
-            steps {
-                script {
-                    def deploymenyStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED").trim()
-                    if (deploymentStatus.contains(successfully rolled out)) {
-                        echo "Deployment is success"
+    
+    stage('Check Status') {
+        steps {
+            script {
+                def deploymentStatus = sh(
+                    returnStdout: true,
+                    script: 'kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED'
+                ).trim()
+
+                if (deploymentStatus.contains('successfully rolled out')) {
+                    echo "Deployment is successful"
+                } else {
+                    echo "Deployment failed. Performing Helm rollback..."
+
+                    sh """
+                        helm rollback ${COMPONENT} -n ${PROJECT}
+                        sleep 20
+                    """
+
+                    def rollbackStatus = sh(
+                        returnStdout: true,
+                        script: 'kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED'
+                    ).trim()
+
+                    if (rollbackStatus.contains('successfully rolled out')) {
+                        error("Deployment failed, but rollback succeeded!")
                     } else {
-                        sh """
-                            helm rollback $COMPONENT -n $PROJECT
-                            sleep 20
-                        """
-                        def rollbackStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --request-timeout=30s || echo FAILED").trim()
-                        if (rollbackStatus.contains(successfully rolled out)) {
-                            error("Deploymentis failed, Rollout Success!")
-                        }
-                        else {
-                            error("Deploymentis failure, Rollout failure, Application is not running!")
-                        }
+                        error("Deployment failed and rollback failed. Application may not be running!")
                     }
                 }
             }
         }
+    }
+
         
     }
 
