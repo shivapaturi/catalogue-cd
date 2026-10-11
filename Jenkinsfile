@@ -95,7 +95,7 @@ pipeline {
                 }
             }
         }
-
+    }
     post {
         always {
             echo 'Deployment pipeline finished.'
