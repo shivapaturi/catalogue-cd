@@ -58,9 +58,7 @@ pipeline {
                 }
             }
         }
-        stage("check status"){
-
-        }
+        
     }
 
     post {
