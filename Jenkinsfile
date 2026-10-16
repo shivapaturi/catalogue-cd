@@ -1,22 +1,57 @@
-@Library('jenkins-shared-library') _
+pipeline {
+    agent {
+        node { label 'AGENT-1' }
+    }
 
-// Parameters must be declared before any pipeline logic executes
-properties([
-  parameters([
-    string(name: 'appVersion',   description: 'Enter Application version'),
-    choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Target environment')
-  ])
-])
+    environment {
+        REGION    = "us-east-1"
+        ACC_ID    = "211125615103"
+        PROJECT   = "roboshop"
+        COMPONENT = "catalogue"
+    }
 
-// Build configMap from params (with safe defaults)
-def configMap = [
-  project    : "roboshop",
-  component  : "catalogue",
-  deploy_to: (params.deploy_to       ?: 'dev'),
-  appVersion : (params.appVersion)
-]
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
 
-echo "Going to execute Jenkins shared library"
-echo "ConfigMap: ${configMap}"
+    parameters {
+        string(name: 'appVersion', description: 'Which app version you want to deploy')
+        choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Pick the environment')
+    }
 
-EKSDeploy(configMap)
+    stages {
+        
+        stage('Deploy') {
+            steps {
+                script{
+                    withAWS(region:'us-east-1',credentials:'aws-creds') {
+                        sh """
+                            aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}
+                            kubectl get nodes
+                        """
+                    }
+                }
+            }
+        }
+        
+    }
+
+        
+
+    post{
+        always{
+            echo 'I will always say Hello again!'
+            cleanWs()
+        }
+        success {
+            echo 'I will run if success'
+        }
+        failure {
+            echo 'I will run if failure'
+        }
+        aborted {
+            echo 'pipeline is aborted'
+        }
+    }
+}
