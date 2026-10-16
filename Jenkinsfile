@@ -1,62 +1,62 @@
 pipeline {
-    agent  {
+
+    agent {
         label 'AGENT-1'
     }
-    environment { 
-        appVersion = ''
-        REGION = "us-east-1"
-        ACC_ID = "160885265516"
-        PROJECT = "roboshop"
-        COMPONENT = "catalogue"
+
+    environment {
+        REGION    = 'us-east-1'
+        ACC_ID    = '211125615103'
+        PROJECT   = 'roboshop'
+        COMPONENT = 'catalogue'
     }
-    options {
-        timeout(time: 30, unit: 'MINUTES') 
-        disableConcurrentBuilds()
-    }
-    parameters {
-        string(name: 'appVersion', description: 'Image version of the application')
-        choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Pick the Environment')
-    }
-    // Build
+
     stages {
-        
+
         stage('Deploy') {
-                steps {
-                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
-                        sh """
-                            export PATH=/usr/local/bin:\$PATH
+            steps {
+                withAWS(credentials: 'aws-creds', region: "${REGION}") {
+                    sh """
+                        export PATH=/usr/local/bin:\$PATH
 
-                            aws eks update-kubeconfig \
-                            --region ${REGION} \
-                            --name "${PROJECT}-${params.deploy_to}"
+                        aws eks update-kubeconfig \
+                          --region ${REGION} \
+                          --name "${PROJECT}-${params.deploy_to}"
 
-                            which kubectl
-                            kubectl version --client
-                            kubectl get nodes
+                        kubectl get nodes
 
-                            kubectl apply -f 01-namespace.yaml
-                            kubectl apply -f application.yaml
-                        """
-                    }
+                        kubectl apply -f 01-namespace.yaml
+                        kubectl apply -f application.yaml
+                    """
                 }
             }
         }
 
-        
+        stage('Check Status') {
+            steps {
+                sh """
+                    export PATH=/usr/local/bin:\$PATH
+                    kubectl rollout status \
+                      deployment/${COMPONENT} \
+                      -n ${PROJECT} \
+                      --timeout=120s
+                """
+            }
+        }
+    }
 
-    post{
-        always{
-            echo 'I will always say Hello again!'
-            cleanWs()
+    post {
+        always {
+            echo 'Deployment pipeline finished.'
+            deleteDir()
         }
+
         success {
-            echo 'I will run if success'
+            echo 'Deployment succeeded!'
         }
+
         failure {
-            echo 'I will run if failure'
-        }
-        aborted {
-            echo 'pipeline is aborted'
+            echo 'Deployment failed!'
         }
     }
 }
