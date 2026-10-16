@@ -28,9 +28,8 @@ pipeline {
                     echo "Run functional test cases"
                 }
             }
-                }
-            }
         }
+        
         stage('Deploy') {
             steps {
                 script {
