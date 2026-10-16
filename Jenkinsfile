@@ -21,22 +21,27 @@ pipeline {
     stages {
         
         stage('Deploy') {
-            steps {
-                withAWS(credentials: 'aws-creds', region: "${REGION}") {
-                    sh """
-                        aws eks update-kubeconfig \
-                        --region ${REGION} \
-                        --name "${PROJECT}-${params.deploy_to}"
+            stage('Deploy') {
+                steps {
+                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
+                        sh """
+                            export PATH=/usr/local/bin:\$PATH
 
-                        which kubectl
-                        kubectl get nodes
+                            aws eks update-kubeconfig \
+                            --region ${REGION} \
+                            --name "${PROJECT}-${params.deploy_to}"
 
-                        kubectl apply -f 01-namespace.yaml
-                        kubectl apply -f application.yaml
-                    """
+                            which kubectl
+                            kubectl version --client
+
+                            kubectl get nodes
+
+                            kubectl apply -f 01-namespace.yaml
+                            kubectl apply -f application.yaml
+                        """
+                    }
                 }
             }
-        }
         
     }
 
