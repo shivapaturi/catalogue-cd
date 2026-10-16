@@ -1,7 +1,12 @@
-pipeline {
-    agent { label 'AGENT-1' }
-
+ppipeline {
+    // These are pre-build sections
+    agent {
+        node {
+            label 'AGENT-1'
+        }
+    }
     environment {
+        appVersion = ""
         REGION    = "us-east-1"
         ACC_ID    = "211125615103"
         PROJECT   = "roboshop"
@@ -13,58 +18,43 @@ pipeline {
         disableConcurrentBuilds()
     }
 
-    parameters {
-        booleanParam(name: 'deploy', defaultValue: true, description: 'Trigger CD after build?')
+     parameters {
+        string(name: 'appVersion', description: 'Which app version you want to deploy')
+        choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Pick something')
     }
-
+    // This is build section
     stages {
-        stage('Read Version') {
+        
+        stage('Deploy') {
             steps {
-                script {
-                    // catalogue is a Node.js app, so the version lives in package.json
-                    def packageJson = readJSON file: 'package.json'
-                    env.appVersion = packageJson.version
-                    echo "App version: ${env.appVersion}"
-                }
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                sh 'npm install'
-            }
-        }
-
-        stage('Docker Build & Push') {
-            steps {
-                script {
-                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
+                script{
+                    withAWS(region:'us-east-1',credentials:'aws-creds') {
                         sh """
-                            aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com
-                            docker build -t ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${env.appVersion} .
-                            docker push ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${env.appVersion}
+                            aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}
+                            kubectl get nodes
                         """
                     }
                 }
             }
         }
-
-        stage('Trigger CD') {
-            when { expression { params.deploy } }
-            steps {
-                build job: '/ROBOSHOP/catalogue-cd',   // full path to the CD job
-                      parameters: [
-                          string(name: 'appVersion', value: "${env.appVersion}"),
-                          string(name: 'deploy_to',  value: 'dev')
-                      ],
-                      propagate: false,   // CI stays green even if CD fails
-                      wait: false         // don't block the CI agent
-            }
-        }
+        
     }
 
-    post {
-        always  { echo 'CI finished' }
-        cleanup { deleteDir() }
+        
+
+    post{
+        always{
+            echo 'I will always say Hello again!'
+            cleanWs()
+        }
+        success {
+            echo 'I will run if success'
+        }
+        failure {
+            echo 'I will run if failure'
+        }
+        aborted {
+            echo 'pipeline is aborted'
+        }
     }
 }
