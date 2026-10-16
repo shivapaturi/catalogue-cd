@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         REGION    = "us-east-1"
-        ACC_ID    = "160885265516"
+        ACC_ID    = "211125615103"
         PROJECT   = "roboshop"
         COMPONENT = "catalogue"
     }
@@ -14,94 +14,57 @@ pipeline {
     }
 
     parameters {
-        string(name: 'appVersion', description: 'Image version of the application')
-        choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Pick the Environment')
+        booleanParam(name: 'deploy', defaultValue: true, description: 'Trigger CD after build?')
     }
 
     stages {
-        stage('Validate') {
+        stage('Read Version') {
             steps {
                 script {
-                    if (!params.appVersion?.trim()) {
-                        error "appVersion parameter is required"
-                    }
+                    // catalogue is a Node.js app, so the version lives in package.json
+                    def packageJson = readJSON file: 'package.json'
+                    env.appVersion = packageJson.version
+                    echo "App version: ${env.appVersion}"
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('Docker Build & Push') {
             steps {
                 script {
                     withAWS(credentials: 'aws-creds', region: "${REGION}") {
                         sh """
-                            aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}
-                            kubectl get nodes
-                            kubectl apply -f 01-namespace.yaml
-                            sed -i "s/IMAGE_VERSION/${params.appVersion}/g" values-${params.deploy_to}.yaml
-                            helm upgrade --install ${COMPONENT} -f values-${params.deploy_to}.yaml -n ${PROJECT} .
+                            aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com
+                            docker build -t ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${env.appVersion} .
+                            docker push ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${env.appVersion}
                         """
                     }
                 }
             }
         }
 
-        stage('Check Status') {
+        stage('Trigger CD') {
+            when { expression { params.deploy } }
             steps {
-                script {
-                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
-                        sh "aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}"
-
-                        def deploymentStatus = sh(returnStdout: true,
-                            script: "kubectl rollout status deployment/${COMPONENT} --timeout=60s -n ${PROJECT} || echo FAILED").trim()
-
-                        if (deploymentStatus.contains("successfully rolled out")) {
-                            echo "Deployment is success"
-                        } else {
-                            sh """
-                                helm rollback ${COMPONENT} -n ${PROJECT}
-                                sleep 20
-                            """
-                            def rollbackStatus = sh(returnStdout: true,
-                                script: "kubectl rollout status deployment/${COMPONENT} --timeout=60s -n ${PROJECT} || echo FAILED").trim()
-
-                            if (rollbackStatus.contains("successfully rolled out")) {
-                                error "Deployment is Failure, Rollback Success"
-                            } else {
-                                error "Deployment is Failure, Rollback Failure. Application is not running"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Functional Testing') {
-            when { expression { params.deploy_to == "dev" } }
-            steps { echo "Run functional test cases" }
-        }
-
-        stage('Integration Testing') {
-            when { expression { params.deploy_to == "qa" } }
-            steps { echo "Run Integration test cases" }
-        }
-
-        stage('PROD Deploy') {
-            when { expression { params.deploy_to == "prod" } }
-            steps {
-                sh """
-                    echo "get cr number"
-                    echo "check with in the deployment window"
-                    echo "is CR approved"
-                    echo "trigger PROD deploy"
-                """
+                build job: '/ROBOSHOP/catalogue-cd',   // full path to the CD job
+                      parameters: [
+                          string(name: 'appVersion', value: "${env.appVersion}"),
+                          string(name: 'deploy_to',  value: 'dev')
+                      ],
+                      propagate: false,   // CI stays green even if CD fails
+                      wait: false         // don't block the CI agent
             }
         }
     }
 
     post {
-        always  { echo 'I will always say Hello again!' }
-        success { echo 'Hello Success' }
-        failure { echo 'Hello Failure' }
+        always  { echo 'CI finished' }
         cleanup { deleteDir() }
     }
 }
