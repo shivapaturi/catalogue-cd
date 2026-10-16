@@ -21,34 +21,37 @@ pipeline {
     }
 
     stages {
-        stage('Validate') {
-            steps {
-                script {
-                    if (!params.appVersion?.trim()) {
-                        error "appVersion parameter is required"
-                    }
-                    echo "Deploying ${COMPONENT}:${params.appVersion} to ${params.deploy_to}"
-                }
-            }
-        }
-
+        
         stage('Deploy') {
             steps {
-                withAWS(region: "${REGION}", credentials: 'aws-creds') {
-                    sh """
-                        aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}
-                        kubectl get nodes
-                    """
+                script{
+                    withAWS(region:'us-east-1',credentials:'aws-creds') {
+                        sh """
+                            aws eks update-kubeconfig --region ${REGION} --name ${PROJECT}-${params.deploy_to}
+                            kubectl get nodes
+                        """
+                    }
                 }
             }
         }
+        
     }
 
-    post {
-        always  { echo 'I will always say Hello again!' }
-        success { echo 'I will run if success' }
-        failure { echo 'I will run if failure' }
-        aborted { echo 'pipeline is aborted' }
-        cleanup { cleanWs() }
+        
+
+    post{
+        always{
+            echo 'I will always say Hello again!'
+            cleanWs()
+        }
+        success {
+            echo 'I will run if success'
+        }
+        failure {
+            echo 'I will run if failure'
+        }
+        aborted {
+            echo 'pipeline is aborted'
+        }
     }
 }
