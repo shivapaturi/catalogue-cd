@@ -21,7 +21,6 @@ pipeline {
     stages {
         
         stage('Deploy') {
-            stage('Deploy') {
                 steps {
                     withAWS(credentials: 'aws-creds', region: "${REGION}") {
                         sh """
@@ -33,7 +32,6 @@ pipeline {
 
                             which kubectl
                             kubectl version --client
-
                             kubectl get nodes
 
                             kubectl apply -f 01-namespace.yaml
@@ -42,8 +40,7 @@ pipeline {
                     }
                 }
             }
-        
-    }
+        }
 
         
 
