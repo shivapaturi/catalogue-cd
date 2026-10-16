@@ -1,60 +1,59 @@
 pipeline {
-    agent {
-        node {
-            label 'AGENT-1'
-        }
+    agent  {
+        label 'AGENT-1'
     }
-
-    environment {
-        REGION    = 'us-east-1'
-        ACC_ID    = '211125615103'
-        PROJECT   = 'roboshop'
-        COMPONENT = 'catalogue'
+    environment { 
+        appVersion = ''
+        REGION = "us-east-1"
+        ACC_ID = "211125615103"
+        PROJECT = "roboshop"
+        COMPONENT = "catalogue"
     }
-
     options {
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES') 
         disableConcurrentBuilds()
     }
-
     parameters {
-        string(
-            name: 'appVersion',
-            defaultValue: 'v1',
-            description: 'Image version of the application'
-        )
-        choice(
-            name: 'deploy_to',
-            choices: ['dev', 'qa', 'prod'],
-            description: 'Pick the Environment'
-        )
+        string(name: 'appVersion', description: 'Image version of the application')
+        choice(name: 'deploy_to', choices: ['dev', 'qa', 'prod'], description: 'Pick the Environment')
     }
-
+    // Build
     stages {
-        stage('Validate Parameters') {
-            steps {
-                script {
-                    if (!params.appVersion?.trim()) {
-                        error('appVersion cannot be empty')
-                    }
+        stage('Check Status'){
+            steps{
+                script{
+                    withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                        def deploymentStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --timeout=30s -n $PROJECT || echo FAILED").trim()
+                        if (deploymentStatus.contains("successfully rolled out")) {
+                            echo "Deployment is success"
+                        } else {
+                            sh """
+                                helm rollback $COMPONENT -n $PROJECT
+                                sleep 20
+                            """
+                            def rollbackStatus = sh(returnStdout: true, script: "kubectl rollout status deployment/catalogue --timeout=30s -n $PROJECT || echo FAILED").trim()
+                            if (rollbackStatus.contains("successfully rolled out")) {
+                                error "Deployment is Failure, Rollback Success"
+                            }
+                            else{
+                                error "Deployment is Failure, Rollback Failure. Application is not running"
+                            }
+                        }
 
-                    echo "Application: ${env.COMPONENT}"
-                    echo "Image version: ${params.appVersion}"
-                    echo "Environment: ${params.deploy_to}"
+                    }
                 }
             }
         }
-
-         stage('Deploy') {
+        stage('Deploy') {
             steps {
                 script {
                     withAWS(credentials: 'aws-creds', region: 'us-east-1') {
                         sh """
-                            aws eks update-kubeconfig --region ${REGION} --name "${PROJECT}-${params.deploy_to}"
+                            aws eks update-kubeconfig --region $REGION --name "$PROJECT-${params.deploy_to}"
                             kubectl get nodes
                             kubectl apply -f 01-namespace.yaml
                             sed -i "s/IMAGE_VERSION/${params.appVersion}/g" values-${params.deploy_to}.yaml
-                            #helm upgrade --install ${COMPONENT} -f values-${params.deploy_to}.yaml -n ${PROJECT} .
+                            #helm upgrade --install $COMPONENT -f values-${params.deploy_to}.yaml -n $PROJECT .
                             kubectl apply -f application.yaml
                         """
                     }
@@ -62,99 +61,58 @@ pipeline {
             }
         }
 
-        stage('Check Status') {
-            steps {
-                script {
-                    withAWS(
-                        credentials: 'aws-creds',
-                        region: "${REGION}"
-                    ) {
-                        def deploymentStatus = sh(
-                            returnStdout: true,
-                            script: """
-                                kubectl rollout status \
-                                  deployment/${COMPONENT} \
-                                  -n ${PROJECT} \
-                                  --timeout=120s 2>&1 || echo FAILED
-                            """
-                        ).trim()
-
-                        if (deploymentStatus.contains(
-                            'successfully rolled out'
-                        )) {
-                            echo 'Deployment is successful'
-                        } else {
-                            echo "Deployment failed: ${deploymentStatus}"
-                            echo 'Performing Helm rollback...'
-
-                            sh """
-                                helm rollback "${COMPONENT}" -n "${PROJECT}"
-                            """
-
-                            def rollbackStatus = sh(
-                                returnStdout: true,
-                                script: """
-                                    kubectl rollout status \
-                                      deployment/${COMPONENT} \
-                                      -n ${PROJECT} \
-                                      --timeout=120s 2>&1 || echo FAILED
-                                """
-                            ).trim()
-
-                            if (rollbackStatus.contains(
-                                'successfully rolled out'
-                            )) {
-                                error(
-                                    'New deployment failed; rollback succeeded. ' +
-                                    'Jenkins build marked as FAILURE.'
-                                )
-                            } else {
-                                error(
-                                    'Deployment and rollback verification failed. ' +
-                                    "Status: ${rollbackStatus}"
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        
         // API Testing
-        stage('Functional Testing') {
+        stage('Functional Testing'){
             when{
                 expression { params.deploy_to = "dev" }
             }
-            steps {
-                script {
-                    echo "Run fuctional test cases"
+             steps{
+                script{
+                    echo "Run functional test cases"
                 }
             }
         }
-        // All Components Testing
-        stage('Integrational Testing') {
+        // All components testing
+        stage('Integration Testing'){
             when{
                 expression { params.deploy_to = "qa" }
             }
+             steps{
+                script{
+                    echo "Run Integration test cases"
+                }
+            }
+        }
+        stage('PROD Deploy') {
+            when{
+                expression { params.deploy_to = "prod" }
+            }
             steps {
                 script {
-                    echo "Run fuctional test cases"
+                    withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                        sh """
+                            echo "get cr number"
+                            echo "check with in the deployment window"
+                            echo "is CR approved"
+                            echo "trigger PROD deploy"
+                        """
+                    }
                 }
             }
         }
     }
 
-    post {
-        always {
-            echo 'Deployment pipeline finished.'
+    post { 
+        always { 
+            echo 'I will always say Hello again!'
             deleteDir()
         }
-
-        success {
-            echo 'Deployment succeeded!'
+        success { 
+            echo 'Hello Success'
         }
-
-        failure {
-            echo 'Deployment failed!'
+        failure { 
+            echo 'Hello Failure'
         }
     }
 }
